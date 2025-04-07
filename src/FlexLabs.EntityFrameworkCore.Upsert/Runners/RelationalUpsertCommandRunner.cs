@@ -167,7 +167,7 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Runners
                                 defaultSql = p.GetDefaultValueSql();
                         }
                         var value = new ConstantValue(rawValue, p);
-                        var allowInserts = p.ValueGenerated == ValueGenerated.Never || p.GetAfterSaveBehavior() == PropertySaveBehavior.Save;
+                        var allowInserts = p.ValueGenerated == ValueGenerated.Never && p.GetBeforeSaveBehavior() == PropertySaveBehavior.Save;
                         return (columnName, value, defaultSql, allowInserts);
                     })
                     .ToArray() as ICollection<(string ColumnName, ConstantValue Value, string DefaultSql, bool AllowInserts)>)

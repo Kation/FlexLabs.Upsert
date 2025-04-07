@@ -34,9 +34,9 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Runners
             if (updateExpressions == null)
                 result.Append("IGNORE ");
             result.Append($"INTO {tableName} (");
-            result.Append(string.Join(", ", entities.First().Select(e => EscapeName(e.ColumnName))));
+            result.Append(string.Join(", ", entities.First().Where(t => t.AllowInserts).Select(e => EscapeName(e.ColumnName))));
             result.Append(") VALUES (");
-            result.Append(string.Join("), (", entities.Select(ec => string.Join(", ", ec.Select(e => e.DefaultSql ?? Parameter(e.Value.ArgumentIndex))))));
+            result.Append(string.Join("), (", entities.Select(ec => string.Join(", ", ec.Where(t => t.AllowInserts).Select(e => e.DefaultSql ?? Parameter(e.Value.ArgumentIndex))))));
             result.Append(')');
             if (updateExpressions != null)
             {
