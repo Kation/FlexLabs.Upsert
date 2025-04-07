@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -25,9 +24,19 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Runners
             where TEntity : class;
 
         /// <inheritdoc/>
+        public abstract ICollection<TEntity> RunAndReturn<TEntity>(DbContext dbContext, IEntityType entityType, ICollection<TEntity> entities, Expression<Func<TEntity, object>>? matchExpression,
+            Expression<Func<TEntity, TEntity, TEntity>>? updateExpression, Expression<Func<TEntity, TEntity, bool>>? updateCondition, RunnerQueryOptions queryOptions)
+            where TEntity : class;
+
+        /// <inheritdoc/>
         public abstract Task<int> RunAsync<TEntity>(DbContext dbContext, IEntityType entityType, ICollection<TEntity> entities, Expression<Func<TEntity, object>>? matchExpression,
             Expression<Func<TEntity, TEntity, TEntity>>? updateExpression, Expression<Func<TEntity, TEntity, bool>>? updateCondition, RunnerQueryOptions queryOptions,
             CancellationToken cancellationToken) where TEntity : class;
+
+        /// <inheritdoc/>
+        public abstract Task<ICollection<TEntity>> RunAndReturnAsync<TEntity>(DbContext dbContext, IEntityType entityType, ICollection<TEntity> entities, Expression<Func<TEntity, object>>? matchExpression,
+            Expression<Func<TEntity, TEntity, TEntity>>? updateExpression, Expression<Func<TEntity, TEntity, bool>>? updateCondition, RunnerQueryOptions queryOptions)
+            where TEntity : class;
 
         /// <summary>
         /// Extract property metadata from the match expression
@@ -39,8 +48,7 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Runners
         /// <returns>A list of model properties used to match entities</returns>
         protected static ICollection<IProperty> ProcessMatchExpression<TEntity>(IEntityType entityType, Expression<Func<TEntity, object>>? matchExpression, RunnerQueryOptions queryOptions)
         {
-            if (entityType == null)
-                throw new ArgumentNullException(nameof(entityType));
+            ArgumentNullException.ThrowIfNull(entityType);
 
             List<IProperty> joinColumns;
             if (matchExpression is null)
@@ -51,14 +59,13 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Runners
             }
             else if (matchExpression.Body is NewExpression newExpression)
             {
-                joinColumns = new List<IProperty>();
+                joinColumns = [];
                 foreach (MemberExpression arg in newExpression.Arguments)
                 {
                     if (arg == null || arg.Member is not PropertyInfo || !typeof(TEntity).Equals(arg.Expression?.Type))
                         throw new InvalidOperationException(Resources.MatchColumnsHaveToBePropertiesOfTheTEntityClass);
-                    var property = entityType.FindProperty(arg.Member.Name);
-                    if (property == null)
-                        throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture, Resources.UnknownProperty, arg.Member.Name));
+                    var property = entityType.FindProperty(arg.Member.Name)
+                        ?? throw new InvalidOperationException(Resources.FormatUnknownProperty(arg.Member.Name));
                     joinColumns.Add(property);
                 }
             }
@@ -66,23 +73,21 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Runners
             {
                 if (unaryExpression.Operand is not MemberExpression memberExp || memberExp.Member is not PropertyInfo || !typeof(TEntity).Equals(memberExp.Expression?.Type))
                     throw new InvalidOperationException(Resources.MatchColumnsHaveToBePropertiesOfTheTEntityClass);
-                var property = entityType.FindProperty(memberExp.Member.Name);
-                if (property == null)
-                    throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture, Resources.UnknownProperty, memberExp.Member.Name));
-                joinColumns = new List<IProperty> { property };
+                var property = entityType.FindProperty(memberExp.Member.Name)
+                    ?? throw new InvalidOperationException(Resources.FormatUnknownProperty(memberExp.Member.Name));
+                joinColumns = [property];
             }
             else if (matchExpression.Body is MemberExpression memberExpression)
             {
                 if (!typeof(TEntity).Equals(memberExpression.Expression?.Type) || memberExpression.Member is not PropertyInfo)
                     throw new InvalidOperationException(Resources.MatchColumnsHaveToBePropertiesOfTheTEntityClass);
-                var property = entityType.FindProperty(memberExpression.Member.Name);
-                if (property == null)
-                    throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture, Resources.UnknownProperty, memberExpression.Member.Name));
-                joinColumns = new List<IProperty> { property };
+                var property = entityType.FindProperty(memberExpression.Member.Name)
+                    ?? throw new InvalidOperationException(Resources.FormatUnknownProperty(memberExpression.Member.Name));
+                joinColumns = [property];
             }
             else
             {
-                throw new ArgumentException(string.Format(CultureInfo.InvariantCulture, Resources.ArgumentMustBeAnAnonymousObjectInitialiser, "match"), nameof(matchExpression));
+                throw new ArgumentException(Resources.FormatArgumentMustBeAnAnonymousObjectInitialiser("match"), nameof(matchExpression));
             }
 
             if (!queryOptions.AllowIdentityMatch && joinColumns.Any(p => p.ValueGenerated != ValueGenerated.Never))

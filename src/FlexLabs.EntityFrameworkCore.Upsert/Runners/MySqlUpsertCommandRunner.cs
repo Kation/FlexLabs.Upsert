@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using FlexLabs.EntityFrameworkCore.Upsert.Internal;
@@ -13,7 +14,10 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Runners
     public class MySqlUpsertCommandRunner : RelationalUpsertCommandRunner
     {
         /// <inheritdoc/>
-        public override bool Supports(string providerName) => providerName == "MySql.Data.EntityFrameworkCore" || providerName == "Pomelo.EntityFrameworkCore.MySql";
+        public override bool Supports(string providerName) =>
+            providerName == "MySql.Data.EntityFrameworkCore" ||
+            providerName == "MySql.EntityFrameworkCore" ||
+            providerName == "Pomelo.EntityFrameworkCore.MySql";
         /// <inheritdoc/>
         protected override string EscapeName(string name) => "`" + name + "`";
         /// <inheritdoc/>
@@ -26,14 +30,21 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Runners
         protected override int? MaxQueryParams => 65535;
 
         /// <inheritdoc/>
-        public override string GenerateCommand(string tableName, ICollection<ICollection<(string ColumnName, ConstantValue Value, string DefaultSql, bool AllowInserts)>> entities,
-            ICollection<(string ColumnName, bool IsNullable)> joinColumns, ICollection<(string ColumnName, IKnownValue Value)>? updateExpressions,
-            KnownExpression? updateCondition)
+        public override string GenerateCommand(
+            string tableName,
+            ICollection<ICollection<(string ColumnName, ConstantValue Value, string DefaultSql, bool AllowInserts)>> entities,
+            ICollection<(string ColumnName, bool IsNullable)> joinColumns,
+            ICollection<(string ColumnName, IKnownValue Value)>? updateExpressions,
+            KnownExpression? updateCondition,
+            bool returnResult = false)
         {
+            if (returnResult)
+                throw new NotImplementedException("MySql runner does not support returning the result of the upsert operation yet");
+
             var result = new StringBuilder("INSERT ");
             if (updateExpressions == null)
                 result.Append("IGNORE ");
-            result.Append($"INTO {tableName} (");
+            result.Append(CultureInfo.InvariantCulture, $"INTO {tableName} (");
             result.Append(string.Join(", ", entities.First().Where(t => t.AllowInserts).Select(e => EscapeName(e.ColumnName))));
             result.Append(") VALUES (");
             result.Append(string.Join("), (", entities.Select(ec => string.Join(", ", ec.Where(t => t.AllowInserts).Select(e => e.DefaultSql ?? Parameter(e.Value.ArgumentIndex))))));

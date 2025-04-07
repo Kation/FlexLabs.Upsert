@@ -25,6 +25,7 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
             ISO = "AU",
             Created = NewDateTime(1970, 1, 1),
         };
+
         readonly PageVisit _dbVisitOld = new()
         {
             UserID = 1,
@@ -33,6 +34,7 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
             FirstVisit = NewDateTime(1970, 1, 1),
             LastVisit = NewDateTime(1970, 1, 1),
         };
+
         readonly PageVisit _dbVisit = new()
         {
             UserID = 1,
@@ -41,63 +43,73 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
             FirstVisit = NewDateTime(1970, 1, 1),
             LastVisit = NewDateTime(1970, 1, 1),
         };
+
         readonly Status _dbStatus = new()
         {
             ID = 1,
             Name = "Created",
             LastChecked = NewDateTime(1970, 1, 1),
         };
+
         readonly Book _dbBook = new()
         {
             Name = "The Fellowship of the Ring",
             Genres = new[] { "Fantasy" },
         };
+
         readonly NullableCompositeKey _nullableKey1 = new()
         {
             ID1 = 1,
             ID2 = 2,
             Value = "First",
         };
+
         readonly NullableCompositeKey _nullableKey2 = new()
         {
             ID1 = 1,
             ID2 = null,
             Value = "Second",
         };
+
         readonly ComputedColumn _computedColumn = new()
         {
             Num1 = 1,
             Num2 = 7,
         };
-        readonly static DateTime _now = NewDateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, DateTime.Now.Hour, DateTime.Now.Minute, DateTime.Now.Second);
+
+        readonly static DateTime _now = NewDateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day,
+            DateTime.Now.Hour, DateTime.Now.Minute, DateTime.Now.Second);
+
         readonly static DateTime _today = NewDateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day);
         readonly int _increment = 8;
 
         private static DateTime NewDateTime(int year, int month, int day, int hour = 0, int minute = 0, int second = 0)
             => new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
 
+        protected int GeneratedAlwaysAsIdentity_NextId { get; private set; }
+
         protected void ResetDb()
         {
             using var dbContext = new TestDbContext(_fixture.DataContextOptions);
 
-            dbContext.RemoveRange(dbContext.Books);
-            dbContext.RemoveRange(dbContext.Countries);
-            dbContext.RemoveRange(dbContext.DashTable);
-            dbContext.RemoveRange(dbContext.GuidKeys);
-            dbContext.RemoveRange(dbContext.GuidKeysAutoGen);
-            dbContext.RemoveRange(dbContext.JObjectDatas);
-            dbContext.RemoveRange(dbContext.JsonDatas);
-            dbContext.RemoveRange(dbContext.KeyOnlies);
-            dbContext.RemoveRange(dbContext.NullableCompositeKeys);
-            dbContext.RemoveRange(dbContext.NullableRequireds);
-            dbContext.RemoveRange(dbContext.PageVisits);
-            dbContext.RemoveRange(dbContext.SchemaTable);
-            dbContext.RemoveRange(dbContext.Statuses);
-            dbContext.RemoveRange(dbContext.StringKeys);
-            dbContext.RemoveRange(dbContext.StringKeysAutoGen);
-            dbContext.RemoveRange(dbContext.TestEntities);
-            dbContext.RemoveRange(dbContext.GeneratedAlwaysAsIdentity);
-            dbContext.RemoveRange(dbContext.ComputedColumns);
+            Reset(dbContext, e => e.Books);
+            Reset(dbContext, e => e.Countries);
+            Reset(dbContext, e => e.DashTable);
+            Reset(dbContext, e => e.GuidKeys);
+            Reset(dbContext, e => e.GuidKeysAutoGen);
+            Reset(dbContext, e => e.JObjectDatas);
+            Reset(dbContext, e => e.JsonDatas);
+            Reset(dbContext, e => e.KeyOnlies);
+            Reset(dbContext, e => e.NullableCompositeKeys);
+            Reset(dbContext, e => e.NullableRequireds);
+            Reset(dbContext, e => e.PageVisits);
+            Reset(dbContext, e => e.SchemaTable);
+            Reset(dbContext, e => e.Statuses);
+            Reset(dbContext, e => e.StringKeys);
+            Reset(dbContext, e => e.StringKeysAutoGen);
+            Reset(dbContext, e => e.TestEntities);
+            Reset(dbContext, e => e.GeneratedAlwaysAsIdentity);
+            Reset(dbContext, e => e.ComputedColumns);
 
             dbContext.Add(_dbCountry);
             dbContext.Add(_dbVisitOld);
@@ -107,7 +119,25 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
             dbContext.Add(_nullableKey1);
             dbContext.Add(_nullableKey2);
             dbContext.Add(_computedColumn);
+            dbContext.Add(new GeneratedAlwaysAsIdentity());
             dbContext.SaveChanges();
+
+            GeneratedAlwaysAsIdentity_NextId = dbContext.GeneratedAlwaysAsIdentity.Max(e => e.ID) + 1;
+            Reset(dbContext, e => e.GeneratedAlwaysAsIdentity);
+            dbContext.SaveChanges();
+        }
+
+        private void Reset<T>(TestDbContext dbContext, Func<TestDbContext, DbSet<T>> selector) where T : class
+        {
+            var dbSet = selector(dbContext);
+            if (_fixture.DbDriver == DbDriver.InMemory)
+            {
+                dbContext.RemoveRange(dbSet);
+            }
+            else
+            {
+                dbSet.ExecuteDelete();
+            }
         }
 
         private void ResetDb<TEntity>(params TEntity[] seedValue)
@@ -205,6 +235,88 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
                 .Run();
 
             dbContext.Countries.Should().HaveCount(2);
+        }
+
+        [SkippableFact]
+        public void Upsert_ReturnResult_Single()
+        {
+            Skip.If(_fixture.DbDriver is DbDriver.MySQL or DbDriver.Oracle, "Returning records is not implemented in MySQL and Oracle");
+
+            ResetDb();
+            using var dbContext = new TestDbContext(_fixture.DataContextOptions);
+
+            var dashTable = new DashTable
+            {
+                DataSet = "Test",
+                Updated = _now,
+            };
+
+            var result = dbContext.DashTable.Upsert(dashTable)
+                .On(c => c.DataSet)
+                .RunAndReturn();
+
+            result.Should().ContainEquivalentOf(new DashTable
+            {
+                ID = result.First().ID,
+                DataSet = "Test",
+                Updated = _now,
+            });
+        }
+
+        [SkippableFact]
+        public void Upsert_ReturnResult_Multiple()
+        {
+            Skip.If(_fixture.DbDriver is DbDriver.MySQL or DbDriver.Oracle, "Returning records is not implemented in MySQL and Oracle");
+
+            ResetDb(new DashTable { DataSet = "Test1" });
+            using var dbContext = new TestDbContext(_fixture.DataContextOptions);
+
+            var dashTables = new[]
+            {
+                new DashTable
+                {
+                    DataSet = "Test1",
+                    Updated = _now,
+                },
+                new DashTable
+                {
+                    DataSet = "Test2",
+                    Updated = _now,
+                }
+            };
+
+            var result = dbContext.DashTable.UpsertRange(dashTables)
+                .On(c => c.DataSet)
+                .RunAndReturn();
+
+            result.Should().HaveCount(2);
+
+            dbContext.DashTable.Should().HaveCount(2);
+        }
+
+        [SkippableFact]
+        public void Upsert_ReturnResult_TracksChanges()
+        {
+            Skip.If(_fixture.DbDriver is DbDriver.MySQL or DbDriver.Oracle, "Returning records is not implemented in MySQL and Oracle");
+
+            ResetDb(new DashTable { DataSet = "Test" });
+            using var dbContext = new TestDbContext(_fixture.DataContextOptions);
+
+            var dashTable = new DashTable
+            {
+                DataSet = "Test",
+                Updated = _now,
+            };
+
+            var result = dbContext.DashTable.Upsert(dashTable)
+                .On(c => c.DataSet)
+                .RunAndReturn();
+
+            result.Single().Updated = _now.AddYears(1);
+            dbContext.SaveChanges();
+
+            var updatedResult = dbContext.DashTable.Single();
+            updatedResult.Updated.Should().Be(_now.AddYears(1));
         }
 
         [Fact]
@@ -1120,11 +1232,10 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
                 j => JToken.DeepEquals(JObject.Parse(updatedJson.Data), JObject.Parse(j.Data)).Should().BeTrue());
         }
 
-        [Fact]
+        [SkippableFact]
         public void Upsert_JsonData_Update_ComplexObject()
         {
-            if (_fixture.DbDriver != DbDriver.Postgres)
-                return; // Default values on text columns not supported in MySQL
+            Skip.If(_fixture.DbDriver is not DbDriver.Postgres, "Default values on text columns are only supported in Postgres");
 
             var existingJson = new JsonData
             {
@@ -1244,11 +1355,10 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
                 k => (k.ID1, k.ID2).Should().Be((newItem.ID1, newItem.ID2)));
         }
 
-        [Fact]
+        [SkippableFact]
         public void Upsert_NullableKeys()
         {
-            if (_fixture.DbDriver == DbDriver.MySQL || _fixture.DbDriver == DbDriver.Postgres || _fixture.DbDriver == DbDriver.Sqlite)
-                return;
+            Skip.If(_fixture.DbDriver is DbDriver.MySQL or DbDriver.Postgres or DbDriver.Sqlite or DbDriver.Oracle);
 
             ResetDb();
             using var dbContext = new TestDbContext(_fixture.DataContextOptions);
@@ -1274,6 +1384,34 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
                 k => (k.ID1, k.ID2, k.Value).Should().Be((1, null, "Fourth")),
                 k => (k.ID1, k.ID2, k.Value).Should().Be((1, 2, "First")),
                 k => (k.ID1, k.ID2, k.Value).Should().Be((1, 3, "Third")));
+        }
+
+        [Fact]
+        public void Upsert_WithNullValues()
+        {
+            ResetDb();
+            using var dbContext = new TestDbContext(_fixture.DataContextOptions);
+
+            var newItem2 = new TestEntity();
+            var newItem = new TestEntity
+            {
+                Num1 = 1,
+                Num2 = 7,
+                Text1 = "Test",
+                Text2 = "Value",
+            };
+
+            dbContext.TestEntities.Upsert(newItem)
+                .On(j => j.Num1)
+                .WhenMatched((je, jn) => new TestEntity
+                {
+                    Text1 = newItem2.Text1,
+                    Text2 = null,
+                })
+                .Run();
+
+            dbContext.TestEntities.OrderBy(t => t.ID).Should().SatisfyRespectively(
+                test => test.Should().MatchModel(newItem));
         }
 
         [Fact]
@@ -1428,6 +1566,58 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
 
             dbContext.TestEntities.OrderBy(t => t.ID).Should().SatisfyRespectively(
                 test => test.Should().MatchModel(dbItem, num2: 0));
+        }
+
+        [Fact]
+        public void Upsert_ConditionalExpression_CoalesceCheck()
+        {
+            ResetDb();
+            using var dbContext = new TestDbContext(_fixture.DataContextOptions);
+
+            var newItem = new TestEntity
+            {
+                Num1 = 1,
+                Num2 = 7,
+                Text1 = "hello",
+                Text2 = "world",
+            };
+
+            dbContext.TestEntities.Upsert(newItem)
+                .On(j => j.Num1)
+                .WhenMatched((old, ins) => new TestEntity
+                {
+                    Text1 = ins.Text1 ?? old.Text1,
+                })
+                .Run();
+
+            dbContext.TestEntities.OrderBy(t => t.ID).Should().SatisfyRespectively(
+                test => test.Should().MatchModel(newItem));
+        }
+
+        [Fact]
+        public void Upsert_ConditionalExpression_NullValueCheck()
+        {
+            ResetDb();
+            using var dbContext = new TestDbContext(_fixture.DataContextOptions);
+
+            var newItem = new TestEntity
+            {
+                Num1 = 1,
+                Num2 = 7,
+                Text1 = "hello",
+                Text2 = "world",
+            };
+
+            dbContext.TestEntities.Upsert(newItem)
+                .On(j => j.Num1)
+                .WhenMatched((old, ins) => new TestEntity
+                {
+                    Text1 = ins.Text1 == null ? old.Text1 : ins.Text1,
+                })
+                .Run();
+
+            dbContext.TestEntities.OrderBy(t => t.ID).Should().SatisfyRespectively(
+                test => test.Should().MatchModel(newItem));
         }
 
         [Fact]
@@ -1681,12 +1871,6 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
         [Fact]
         public void Upsert_UpdateCondition_ValueCheck_UpdateColumnFromCondition()
         {
-            if (BuildEnvironment.IsGitHub && _fixture.DbDriver == DbDriver.MySQL && Environment.OSVersion.Platform == PlatformID.Unix)
-            {
-                // Disabling this test on GitHub Ubuntu images - they're cursed?
-                return;
-            }
-
             var dbItem1 = new TestEntity
             {
                 Num1 = 1,
@@ -1718,11 +1902,10 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
                 test => test.Should().MatchModel(dbItem2));
         }
 
-        [Fact]
+        [SkippableFact]
         public void Upsert_NullableRequired_Insert()
         {
-            if (_fixture.DbDriver == DbDriver.MySQL)
-                return; // Default values on text columns not supported in MySQL
+            Skip.If(_fixture.DbDriver == DbDriver.MySQL, "Default values on text columns not supported in MySQL");
 
             ResetDb();
             using var dbContext = new TestDbContext(_fixture.DataContextOptions);
@@ -1759,11 +1942,10 @@ namespace FlexLabs.EntityFrameworkCore.Upsert.Tests.EF
             dbContext.NullableRequireds.Should().HaveCount(100_000);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ComputedColumn_Updates()
         {
-            if (_fixture.DbDriver == DbDriver.InMemory)
-                return; // In memory db doesn't support sql computed columns
+            Skip.If(_fixture.DbDriver == DbDriver.InMemory, "In memory db doesn't support sql computed columns");
 
             ResetDb();
             using var dbContext = new TestDbContext(_fixture.DataContextOptions);
