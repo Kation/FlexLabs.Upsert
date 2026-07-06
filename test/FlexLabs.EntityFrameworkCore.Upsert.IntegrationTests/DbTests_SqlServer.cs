@@ -1,33 +1,32 @@
-﻿using DotNet.Testcontainers.Containers;
+#if !NOMSSQL
+using System.Data.Common;
 using FlexLabs.EntityFrameworkCore.Upsert.IntegrationTests.Base;
 using FlexLabs.EntityFrameworkCore.Upsert.Tests.EF;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 using Testcontainers.MsSql;
-using Xunit;
+using Testcontainers.Xunit;
+using Xunit.Sdk;
 
-namespace FlexLabs.EntityFrameworkCore.Upsert.IntegrationTests
+namespace FlexLabs.EntityFrameworkCore.Upsert.IntegrationTests;
+
+public class DbTests_SqlServer(DbTests_SqlServer.DatabaseInitializer contexts) : DbTestsBase(contexts), IClassFixture<DbTests_SqlServer.DatabaseInitializer>
 {
-#if !NOMSSQL
-    public class DbTests_SqlServer : DbTestsBase, IClassFixture<DbTests_SqlServer.DatabaseInitializer>
+    public sealed class DatabaseInitializer(IMessageSink messageSink) : ContainerisedDatabaseInitializerFixture<MsSqlBuilder, MsSqlContainer>(new MsSqlFixture(messageSink))
     {
-        public sealed class DatabaseInitializer : DatabaseInitializerFixture
+        public override DbDriver DbDriver => DbDriver.MSSQL;
+
+        protected override void ConfigureContextOptions(DbContextOptionsBuilder<TestDbContext> builder)
+            => builder.UseSqlServer(ConnectionString);
+
+        private class MsSqlFixture(IMessageSink messageSink) : DbContainerFixture<MsSqlBuilder, MsSqlContainer>(messageSink)
         {
-            public override DbDriver DbDriver => DbDriver.MSSQL;
+            public override DbProviderFactory DbProviderFactory
+                => SqlClientFactory.Instance;
 
-            protected override IContainer BuildContainer()
-                => new MsSqlBuilder().Build();
-
-            protected override void ConfigureContextOptions(DbContextOptionsBuilder<TestDbContext> builder)
-            {
-                var connectionString = (TestContainer as IDatabaseContainer)?.GetConnectionString()
-                    ?? "Server=(localdb)\\MSSqlLocalDB;Integrated Security=SSPI;Initial Catalog=FlexLabsUpsertTests;";
-                builder.UseSqlServer(connectionString);
-            }
+            // https://mcr.microsoft.com/en-us/artifact/mar/mssql/server/tags
+            protected override MsSqlBuilder Configure()
+                => ConfigureContainer(new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest"));
         }
-
-        public DbTests_SqlServer(DatabaseInitializer contexts)
-            : base(contexts)
-        { }
     }
-#endif
 }
+#endif
