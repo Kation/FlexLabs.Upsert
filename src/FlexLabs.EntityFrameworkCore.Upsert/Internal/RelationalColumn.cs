@@ -37,7 +37,7 @@ internal sealed record RelationalColumn(
         }
 
         var value = new ConstantValue(rawValue, this);
-        var allowInserts = Property.ValueGenerated == ValueGenerated.Never || Property.GetAfterSaveBehavior() == PropertySaveBehavior.Save;
+        var allowInserts = Property.ValueGenerated == ValueGenerated.Never && Property.GetAfterSaveBehavior() == PropertySaveBehavior.Save;
 
         return (ColumnName, value, defaultSql, allowInserts);
     }
